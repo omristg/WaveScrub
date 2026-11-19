@@ -1665,6 +1665,49 @@
                 nudgeTime(e.shiftKey ? 0.01 : 0.1);
             }
         });
+
+        // --- PWA Share Target: pick up audio shared from another app (sw.js stashes it in a cache) ---
+        (async function consumeSharedAudio() {
+            const params = new URLSearchParams(location.search);
+            if (!params.has('shared')) return;
+            // Drop ?shared=1 so a reload doesn't try to import again.
+            history.replaceState(null, '', location.pathname + location.hash);
+            if (!('caches' in window)) return;
+
+            try {
+                const inbox = await caches.open('wavescrub-share-inbox');
+                const keys = await inbox.keys();
+                const files = [];
+                for (const key of keys) {
+                    const res = await inbox.match(key);
+                    if (!res) continue;
+                    const blob = await res.blob();
+                    const name = decodeURIComponent(res.headers.get('X-File-Name') || 'shared-audio');
+                    const order = Number(res.headers.get('X-File-Order') || 0);
+                    files.push({ order, file: new File([blob], name, { type: blob.type || 'audio/mpeg' }) });
+                    await inbox.delete(key);
+                }
+                if (!files.length) return;
+                files.sort((a, b) => a.order - b.order);
+
+                // Add any extra shared files to the library (without clobbering existing saved ones)...
+                const sessions = await getAllSavedSessions();
+                for (const { file } of files.slice(1)) {
+                    const id = `${file.name}_${file.size}`;
+                    if (sessions.some(s => s.id === id)) continue;
+                    currentSessionId = id;
+                    await saveSessionToDB(file, file.name, null, langSelect.value, file.name);
+                }
+
+                // ...then open the first one and save it as a library entry (keeps any existing transcript).
+                const first = files[0].file;
+                await loadAudioFile(first);
+                await saveSessionToDB(first, first.name, currentTranscriptData, langSelect.value, currentDisplayName);
+                savedStatusPill.classList.remove('hidden');
+            } catch (err) {
+                console.warn('Could not import shared audio:', err);
+            }
+        })();
     </script>
 </body>
 </html>
