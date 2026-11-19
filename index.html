@@ -405,6 +405,13 @@
                 <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Shift + ← / →</kbd> Fine Scrub ±10ms</div>
                 <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Mouse Wheel</kbd> Zoom In / Out</div>
                 <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Click Word</kbd> Scrub to Word Start</div>
+                <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Double-Click Word</kbd> Play from Word</div>
+            </div>
+            <!-- Touch Gestures Legend (mobile) -->
+            <div class="flex sm:hidden flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-slate-400 pt-1">
+                <div>Pinch waveform: zoom</div>
+                <div>Tap word: jump</div>
+                <div>Double-tap word: play from word</div>
             </div>
 
         </div>
@@ -905,6 +912,7 @@
         let currentSessionId = '';
         let currentTranscriptData = null;
         let syncedWords = [];
+        let lastWordTap = { span: null, time: 0 }; // for double-tap-to-play on transcript words
         let isEditingTranscript = false;
 
         const floatTime = document.getElementById('float-time');
@@ -972,6 +980,7 @@
                 const zeroTime = formatTime(0);
                 document.getElementById('current-time').textContent = zeroTime;
                 floatTime.textContent = zeroTime;
+                updateFloatingControlsVisibility();
             });
 
             wavesurfer.on('timeupdate', (currentTime) => {
@@ -1385,12 +1394,23 @@
                 span.textContent = wordText;
                 span.title = formatTime(startTime);
 
-                // Click Word -> Scrub Waveform ONLY when not in Edit Text mode
+                // Click Word -> Scrub Waveform ONLY when not in Edit Text mode.
+                // Double-click / double-tap -> scrub and start playing if paused.
+                // Detected by timing (not 'dblclick') so it works on iOS too.
                 span.addEventListener('click', () => {
                     if (isEditingTranscript) return;
                     if (!wavesurfer || !isAudioReady) return;
+                    const now = Date.now();
+                    const isDoubleTap = lastWordTap.span === span && (now - lastWordTap.time) < 400;
+                    lastWordTap = isDoubleTap ? { span: null, time: 0 } : { span, time: now };
+
                     wavesurfer.setTime(startTime);
                     highlightWordAtTime(startTime);
+
+                    if (isDoubleTap) {
+                        window.getSelection()?.removeAllRanges(); // undo the browser's double-click word selection
+                        if (!wavesurfer.isPlaying()) wavesurfer.play();
+                    }
                 });
 
                 // Pressing Enter while editing a word finishes editing that word cleanly
@@ -1506,17 +1526,21 @@
             document.getElementById('float-play-text').textContent = isPlaying ? 'Pause' : 'Play';
         }
 
+        const stickyHeader = document.querySelector('header');
+
         function updateFloatingControlsVisibility() {
-            const hasTranscript = syncedWords.length > 0;
-            if (!hasTranscript || workspace.classList.contains('hidden')) {
+            if (!isAudioReady || workspace.classList.contains('hidden')) {
                 floatingControls.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
                 return;
             }
 
+            // Show the mini-player as soon as the main Play button starts sliding under the
+            // sticky header (or is below the viewport), so there's never a moment with neither.
             const playBtnRect = playBtn.getBoundingClientRect();
-            const isScrolledPastPlayBtn = playBtnRect.bottom < -80;
+            const headerBottom = stickyHeader ? stickyHeader.getBoundingClientRect().bottom : 0;
+            const isMainPlayHidden = playBtnRect.top < headerBottom || playBtnRect.bottom > window.innerHeight;
 
-            if (isScrolledPastPlayBtn) {
+            if (isMainPlayHidden) {
                 floatingControls.classList.remove('translate-y-24', 'opacity-0', 'pointer-events-none');
             } else {
                 floatingControls.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
@@ -1574,6 +1598,42 @@
 
             applyZoom(currentZoom + (direction * step));
         }, { passive: false });
+
+        // Pinch-to-zoom on the waveform (touch). Two fingers spread = zoom in, pinch = zoom out.
+        let pinchStartDist = 0;
+        let pinchStartZoom = 0;
+        let pinchPendingZoom = null;
+
+        function touchDistance(t) {
+            return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+        }
+
+        waveformCard.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2 && wavesurfer && isAudioReady) {
+                pinchStartDist = touchDistance(e.touches);
+                pinchStartZoom = Number(zoomSlider.value);
+            }
+        }, { passive: true });
+
+        waveformCard.addEventListener('touchmove', (e) => {
+            if (e.touches.length !== 2 || !pinchStartDist) return;
+            e.preventDefault(); // stop the browser zooming the whole page
+            const scale = touchDistance(e.touches) / pinchStartDist;
+            const shouldSchedule = pinchPendingZoom === null;
+            pinchPendingZoom = pinchStartZoom * scale;
+            if (shouldSchedule) {
+                // Re-rendering the waveform is heavy; apply at most once per frame.
+                requestAnimationFrame(() => {
+                    if (pinchPendingZoom !== null) applyZoom(Math.round(pinchPendingZoom));
+                    pinchPendingZoom = null;
+                });
+            }
+        }, { passive: false });
+
+        waveformCard.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) pinchStartDist = 0;
+        }, { passive: true });
+        waveformCard.addEventListener('touchcancel', () => { pinchStartDist = 0; }, { passive: true });
 
         speedSelect.addEventListener('change', (e) => {
             if (!wavesurfer) return;
