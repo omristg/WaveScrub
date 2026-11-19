@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WaveScrub - Precision Audio & Word Sync</title>
+
+    <!-- PWA & Mobile App Meta Tags -->
+    <meta name="theme-color" content="#0b1323">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WaveScrub">
+
+    <!-- New Symmetric Center-Circle Waveform Favicon & PWA App Icon -->
+    <link id="favicon-link" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%230e172a'/%3E%3Cstop offset='100%25' stop-color='%23090f1d'/%3E%3C/linearGradient%3E%3ClinearGradient id='bar' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%2367e8f9'/%3E%3Cstop offset='50%25' stop-color='%2338bdf8'/%3E%3Cstop offset='100%25' stop-color='%231d4ed8'/%3E%3C/linearGradient%3E%3CradialGradient id='glow' cx='50%25' cy='50%25' r='45%25'%3E%3Cstop offset='0%25' stop-color='%2338bdf8' stop-opacity='0.25'/%3E%3Cstop offset='100%25' stop-color='%23090f1d' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='112' fill='url(%23bg)'/%3E%3Ccircle cx='256' cy='256' r='220' fill='url(%23glow)'/%3E%3Cg fill='url(%23bar)'%3E%3Crect x='68' y='234' width='18' height='44' rx='9'/%3E%3Crect x='98' y='210' width='18' height='92' rx='9'/%3E%3Crect x='128' y='182' width='18' height='148' rx='9'/%3E%3Crect x='158' y='136' width='18' height='240' rx='9'/%3E%3Crect x='188' y='170' width='18' height='172' rx='9'/%3E%3Crect x='246' y='88' width='20' height='122' rx='10'/%3E%3Crect x='246' y='302' width='20' height='122' rx='10'/%3E%3Ccircle cx='256' cy='256' r='31'/%3E%3Crect x='306' y='170' width='18' height='172' rx='9'/%3E%3Crect x='336' y='136' width='18' height='240' rx='9'/%3E%3Crect x='366' y='182' width='18' height='148' rx='9'/%3E%3Crect x='396' y='210' width='18' height='92' rx='9'/%3E%3Crect x='426' y='234' width='18' height='44' rx='9'/%3E%3C/g%3E%3C/svg%3E">
+    <link id="apple-touch-icon-link" rel="apple-touch-icon" href="">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- WaveSurfer.js -->
+    <script src="https://cdn.jsdelivr.net/npm/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/wavesurfer.js@7/dist/plugins/timeline.min.js"></script>
+
+    <style>
+        /* Thin modern scrollbar for WaveSurfer v7 Shadow DOM */
+        #waveform ::part(scroll) {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(59, 130, 246, 0.5) transparent;
+            padding-bottom: 6px;
+        }
+        #waveform ::part(scroll)::-webkit-scrollbar {
+            height: 6px;
+        }
+        #waveform ::part(scroll)::-webkit-scrollbar-track {
+            background: rgba(148, 163, 184, 0.12);
+            border-radius: 9999px;
+        }
+        #waveform ::part(scroll)::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 9999px;
+        }
+        #waveform ::part(scroll)::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.9);
+        }
+
+        /* Pure inline text words: ZERO padding, ZERO background blocks, ZERO font-weight shift */
+        .sync-word {
+            display: inline;
+            cursor: pointer;
+            transition: color 0.1s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .sync-word:hover {
+            color: #3b82f6;
+        }
+        .dark .sync-word:hover {
+            color: #60a5fa;
+        }
+        .sync-word.active-word {
+            color: #2563eb !important;
+            text-decoration: underline;
+            text-decoration-thickness: 2px;
+            text-underline-offset: 4px;
+        }
+        .dark .sync-word.active-word {
+            color: #38bdf8 !important;
+        }
+
+        /* Edit Text Mode styling (subtle dashed underline so user sees words are editable without shifting layout) */
+        .editing-transcript .sync-word {
+            cursor: text;
+            border-bottom: 1px dashed rgba(59, 130, 246, 0.45);
+            outline: none;
+        }
+        .editing-transcript .sync-word:focus {
+            color: #3b82f6;
+            border-bottom: 2px solid #3b82f6;
+        }
+        .dark .editing-transcript .sync-word:focus {
+            color: #38bdf8;
+            border-bottom: 2px solid #38bdf8;
+        }
+
+        /* Rename modal entrance */
+        #rename-modal:not(.hidden) #rename-modal-backdrop {
+            animation: renameFade 0.15s ease-out;
+        }
+        #rename-modal:not(.hidden) .rename-modal-panel {
+            animation: renamePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes renameFade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes renamePop {
+            from { opacity: 0; transform: translateY(8px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col transition-colors duration-200 selection:bg-blue-500 selection:text-white pb-20">
+
+    <!-- Header -->
+    <header class="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-20">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <!-- Original Pulsing Blue Strip Inside the App -->
+                <div class="w-2.5 sm:w-3 h-7 sm:h-8 bg-blue-500 rounded-full animate-pulse shrink-0"></div>
+                <h1 class="text-lg sm:text-xl font-bold tracking-tight shrink-0">Wave<span class="text-blue-500">Scrub</span></h1>
+                <span id="js-status" class="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 font-medium shrink-0">JS Offline</span>
+                
+                <!-- Clickable / Editable Session Title Badge -->
+                <button id="rename-current-btn" type="button" class="hidden inline-flex items-center gap-1.5 ml-0.5 sm:ml-1 min-w-0 text-left text-[11px] sm:text-xs leading-snug px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-500/10 hover:text-blue-500 text-slate-500 dark:text-slate-400 transition max-w-[130px] sm:max-w-[200px] md:max-w-[240px]" title="Click to rename this audio session">
+                    <span id="file-name" class="min-w-0 break-words line-clamp-2"></span>
+                    <svg class="w-3 h-3 shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-1.5 sm:gap-2.5">
+                <button id="new-file-btn" type="button" class="hidden text-xs sm:text-sm font-medium text-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition px-2 py-1">
+                    New Audio
+                </button>
+
+                <!-- Saved Library Toggle Button -->
+                <button id="library-toggle-btn" type="button" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                    </svg>
+                    <span>Saved</span>
+                    <span id="saved-count-badge" class="px-1.5 py-0.2 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 font-mono text-[10px]">0</span>
+                </button>
+
+                <!-- API Key Settings Toggle Button -->
+                <button id="api-toggle-btn" type="button" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                    </svg>
+                    <span id="api-badge-text" class="hidden sm:inline truncate">API Key</span>
+                    <span id="api-dot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                </button>
+
+                <!-- Install PWA Button -->
+                <button id="pwa-install-btn" type="button" class="hidden items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm" title="Install WaveScrub App to Device">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    <span class="hidden sm:inline">Install App</span>
+                </button>
+                
+                <!-- Theme Toggle -->
+                <button id="theme-toggle" type="button" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition" title="Toggle Theme">
+                    <svg id="sun-icon" class="w-4 h-4 sm:w-5 sm:h-5 hidden dark:block text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                    </svg>
+                    <svg id="moon-icon" class="w-4 h-4 sm:w-5 sm:h-5 block dark:hidden text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Collapsible API Key Drawer -->
+        <div id="api-drawer" class="hidden border-t border-slate-200 dark:border-slate-800 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4">
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div class="space-y-1">
+                        <h3 class="text-sm font-semibold flex flex-wrap items-center gap-2">
+                            Speech-to-Text API Key
+                            <span class="text-[11px] font-normal px-2 py-0.5 rounded bg-blue-500/10 text-blue-500">Saved locally in browser</span>
+                        </h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            Auto-detects any of the 3 supported keys: 
+                            <code class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">gsk_...</code> (<strong>Groq</strong>), 
+                            <code class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">xai-...</code> (<strong>Grok</strong> by xAI), or 
+                            <code class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">sk-...</code> (<strong>OpenAI</strong>).
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-2 w-full md:w-auto">
+                        <input id="api-key-input" type="password" placeholder="Paste gsk_..., xai-..., or sk-... key" 
+                            class="w-full md:w-72 px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono">
+                        <button id="clear-key-btn" type="button" class="px-2.5 py-2 text-xs font-medium text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition shrink-0">
+                            Clear
+                        </button>
+                        <button id="close-drawer-btn" type="button" class="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition shrink-0">
+                            Done
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collapsible Saved Audio & Transcriptions Library Drawer -->
+        <div id="library-drawer" class="hidden border-t border-slate-200 dark:border-slate-800 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 space-y-3">
+                <div class="flex items-start sm:items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <h3 class="text-sm font-semibold flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span>Saved Audio & Transcriptions</span>
+                            <span class="text-[10px] sm:text-[11px] font-normal leading-tight whitespace-nowrap px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500">Stored offline</span>
+                        </h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Click any item to load it, or click the pencil icon to rename it.</p>
+                    </div>
+                    <button id="close-library-btn" type="button" class="shrink-0 text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 px-3 py-1.5 rounded-lg bg-slate-200/70 dark:bg-slate-800">
+                        Close
+                    </button>
+                </div>
+                <div id="header-library-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pt-1"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-8 flex flex-col justify-center space-y-6">
+        
+        <!-- 1. Drag & Drop Zone -->
+        <label for="file-input" id="dropzone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 bg-white dark:bg-slate-900/50 shadow-sm hover:shadow-md flex flex-col items-center justify-center min-h-[260px] sm:min-h-[300px]">
+            <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm" class="hidden">
+            <div class="w-14 h-14 sm:w-16 sm:h-16 mb-4 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                <svg class="w-7 h-7 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                </svg>
+            </div>
+            <h2 class="text-lg sm:text-xl font-semibold mb-1.5 sm:mb-2">Tap or drop your audio file here</h2>
+            <p class="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mb-5 sm:mb-6">Supports MP3, WAV, M4A, OGG, FLAC</p>
+            <span class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl text-sm transition shadow-lg shadow-blue-500/20">
+                Choose Audio File
+            </span>
+        </label>
+
+        <!-- Saved Sessions Section on Home Screen -->
+        <div id="home-library-section" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <h3 class="text-sm sm:text-base font-bold flex items-center gap-2">
+                    <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path>
+                    </svg>
+                    <span>Saved Audio & Transcriptions</span>
+                </h3>
+                <span class="text-xs text-slate-400">Instant Load (No API Key Needed)</span>
+            </div>
+            <div id="home-library-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+
+        <!-- 2. Audio Workspace -->
+        <div id="workspace" class="hidden space-y-4 sm:space-y-6">
+            
+            <!-- Giant Precision Timestamp -->
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-row items-center justify-between gap-2">
+                <div class="min-w-0">
+                    <div class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-semibold mb-0.5 sm:mb-1">Current Scrub Position</div>
+                    <div class="font-mono text-2xl sm:text-4xl md:text-5xl font-bold text-blue-600 dark:text-blue-400 tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
+                        <span id="current-time">00:00.000</span>
+                        <span id="active-word-badge" class="hidden text-xs sm:text-base font-sans font-medium text-blue-500 dark:text-sky-400 truncate max-w-[140px] sm:max-w-xs"></span>
+                    </div>
+                </div>
+                <div class="text-right shrink-0">
+                    <div class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-semibold mb-0.5 sm:mb-1">Duration</div>
+                    <div id="total-time" class="font-mono text-base sm:text-2xl text-slate-600 dark:text-slate-400">00:00.000</div>
+                </div>
+            </div>
+
+            <!-- Waveform Container -->
+            <div id="waveform-card" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm relative">
+                <div id="loading-overlay" class="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl hidden">
+                    <div class="text-blue-500 font-medium flex items-center gap-2 text-sm sm:text-base">
+                        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        Drawing Waveform...
+                    </div>
+                </div>
+                <div id="waveform" class="w-full"></div>
+                <div id="wave-timeline" class="w-full mt-2"></div>
+            </div>
+
+            <!-- Controls Bar (Main) -->
+            <div id="main-controls-card" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
+                
+                <!-- Play & Nudge Buttons -->
+                <div class="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-start gap-2 sm:gap-3">
+                    <button id="play-btn" type="button" class="w-full sm:w-auto justify-center px-6 py-3 bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white font-semibold rounded-xl transition flex items-center gap-2 shadow-lg shadow-blue-500/20">
+                        <svg id="play-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="pause-icon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        <span id="play-text">Play</span>
+                    </button>
+
+                    <div class="flex items-center justify-between w-full sm:w-auto bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+                        <button id="nudge-back-fine" type="button" class="flex-1 sm:flex-initial px-2.5 py-2 text-xs font-mono hover:bg-white dark:hover:bg-slate-700 active:bg-white dark:active:bg-slate-600 rounded-lg transition" title="Shift + Left Arrow">-10ms</button>
+                        <button id="nudge-back" type="button" class="flex-1 sm:flex-initial px-2.5 py-2 text-xs font-mono hover:bg-white dark:hover:bg-slate-700 active:bg-white dark:active:bg-slate-600 rounded-lg transition border-l border-slate-200 dark:border-slate-700" title="Left Arrow">-100ms</button>
+                        <button id="nudge-forward" type="button" class="flex-1 sm:flex-initial px-2.5 py-2 text-xs font-mono hover:bg-white dark:hover:bg-slate-700 active:bg-white dark:active:bg-slate-600 rounded-lg transition border-l border-slate-200 dark:border-slate-700" title="Right Arrow">+100ms</button>
+                        <button id="nudge-forward-fine" type="button" class="flex-1 sm:flex-initial px-2.5 py-2 text-xs font-mono hover:bg-white dark:hover:bg-slate-700 active:bg-white dark:active:bg-slate-600 rounded-lg transition border-l border-slate-200 dark:border-slate-700" title="Shift + Right Arrow">+10ms</button>
+                    </div>
+                </div>
+
+                <!-- Zoom & Speed Row -->
+                <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 flex-1 lg:max-w-md">
+                    <div class="flex items-center gap-2.5 flex-1 min-w-[160px]">
+                        <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"></path></svg>
+                        <input id="zoom-slider" type="range" min="10" max="500" value="10" class="w-full accent-blue-600 cursor-pointer h-2 rounded-lg">
+                        <span class="text-xs font-mono text-slate-400 w-11 text-right shrink-0" id="zoom-label">1.0x</span>
+                    </div>
+
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="text-xs text-slate-400 font-medium">Speed:</span>
+                        <select id="speed-select" class="bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-2.5 py-2 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+                            <option value="0.25">0.25x</option>
+                            <option value="0.5">0.5x</option>
+                            <option value="0.75">0.75x</option>
+                            <option value="1" selected>1.0x</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Speech-to-Text (STT) Word Sync Card -->
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm space-y-4">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+                    <div class="min-w-0 lg:flex-1 lg:min-w-[240px]">
+                        <h3 class="text-sm sm:text-base font-bold flex flex-wrap items-center gap-2">
+                            <span>AI Word-Sync Transcription</span>
+                            <span id="provider-pill" class="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">No Key Set</span>
+                            <span id="saved-status-pill" class="hidden text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500">Saved in Library</span>
+                        </h3>
+                        <p id="stt-subtitle" class="text-xs text-slate-400 mt-0.5">Tap or click any word in the paragraphs below to scrub the waveform to its exact start.</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-2.5 min-w-0 lg:justify-end">
+                        <div class="flex items-center gap-2 flex-1 sm:flex-initial">
+                            <label for="lang-select" class="text-xs text-slate-400 font-medium shrink-0">Lang:</label>
+                            <select id="lang-select" class="w-full sm:w-auto bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-3 py-2 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+                                <option value="">Auto-Detect</option>
+                                <option value="he">Hebrew (עברית)</option>
+                                <option value="it">Italian (Italiano)</option>
+                                <option value="en">English</option>
+                                <option value="ar">Arabic (العربية)</option>
+                                <option value="ru">Russian (Русский)</option>
+                                <option value="es">Spanish (Español)</option>
+                                <option value="fr">French (Français)</option>
+                                <option value="de">German (Deutsch)</option>
+                            </select>
+                        </div>
+
+                        <!-- Edit Text Toggle Button (Only shown once transcript exists) -->
+                        <button id="edit-text-btn" type="button" class="hidden px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs sm:text-sm font-medium rounded-xl transition items-center gap-1.5 shrink-0" title="Fix typos in the transcript while keeping word timestamps synced">
+                            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
+                            <span id="edit-text-label">Edit Text</span>
+                        </button>
+
+                        <!-- Save Button (with optional name change on click if user holds Shift or via Pencil) -->
+                        <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 shrink-0">
+                            <button id="save-session-btn" type="button" class="px-3 py-2 hover:bg-white dark:hover:bg-slate-700 text-xs sm:text-sm font-medium rounded-lg transition flex items-center gap-1.5" title="Save Audio & Transcript">
+                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+                                </svg>
+                                <span id="save-session-text">Save</span>
+                            </button>
+                            <button id="save-as-btn" type="button" class="px-2 py-2 hover:bg-white dark:hover:bg-slate-700 text-slate-500 hover:text-blue-500 rounded-lg transition border-l border-slate-200 dark:border-slate-700" title="Rename / Save with Custom Name">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <button id="transcribe-btn" type="button" class="w-full sm:w-auto justify-center px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold rounded-xl transition flex items-center gap-2 shadow-md shadow-blue-500/15 shrink-0">
+                            <svg id="stt-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                            </svg>
+                            <svg id="stt-spinner" class="animate-spin h-4 w-4 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span id="transcribe-btn-text">Transcribe Audio</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="stt-message" class="hidden text-xs px-4 py-3 rounded-xl"></div>
+
+                <!-- Natural Paragraphs Container -->
+                <div id="transcript-container" class="relative min-h-[84px] p-4 sm:p-6 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/70 dark:border-slate-800/80 text-base sm:text-lg leading-relaxed text-slate-700 dark:text-slate-300 space-y-4">
+                    <p id="transcript-placeholder" class="text-xs sm:text-sm text-slate-400 w-full text-center py-4">
+                        Tap <strong>"Transcribe Audio"</strong> above to generate natural, clickable paragraphs synced with the audio wave.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Keyboard Shortcuts Legend -->
+            <div class="hidden sm:flex flex-wrap justify-center gap-6 text-xs text-slate-400 pt-1">
+                <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Space</kbd> Play / Pause</div>
+                <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">←</kbd> <kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">→</kbd> Scrub ±100ms</div>
+                <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Shift + ← / →</kbd> Fine Scrub ±10ms</div>
+                <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Mouse Wheel</kbd> Zoom In / Out</div>
+                <div><kbd class="px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-mono">Click Word</kbd> Scrub to Word Start</div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Floating Bottom Mini-Player -->
+    <div id="floating-controls" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 sm:gap-3 px-3.5 py-2.5 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/90 dark:border-slate-700/90 shadow-2xl shadow-blue-500/10 transition-all duration-300 translate-y-24 opacity-0 pointer-events-none">
+        <button id="float-play-btn" type="button" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs sm:text-sm font-semibold rounded-xl transition flex items-center gap-1.5 shadow-md shadow-blue-500/20">
+            <svg id="float-play-icon" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="float-pause-icon" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <span id="float-play-text">Play</span>
+        </button>
+
+        <div id="float-time" class="font-mono text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 px-1.5">
+            00:00.000
+        </div>
+
+        <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 text-xs font-mono">
+            <button id="float-nudge-back" type="button" class="px-2 py-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition" title="Left Arrow">-100ms</button>
+            <button id="float-nudge-forward" type="button" class="px-2 py-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition border-l border-slate-200 dark:border-slate-700" title="Right Arrow">+100ms</button>
+        </div>
+
+        <button id="float-top-btn" type="button" class="p-2 text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Scroll back to Waveform">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="rename-modal" class="hidden fixed inset-0 z-50 flex items-start sm:items-center justify-center px-4 pt-[14vh] sm:pt-0" role="dialog" aria-modal="true" aria-labelledby="rename-modal-title">
+        <div id="rename-modal-backdrop" class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/70 backdrop-blur-sm"></div>
+        <form id="rename-modal-form" class="rename-modal-panel relative w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl shadow-blue-500/10 p-4 sm:p-5 space-y-4">
+            <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                    </svg>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 id="rename-modal-title" class="text-sm font-semibold">Rename Audio</h3>
+                    <p id="rename-modal-subtitle" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate"></p>
+                </div>
+                <button id="rename-modal-close" type="button" class="p-1.5 -m-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0" title="Close">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <input id="rename-modal-input" type="text" autocomplete="off" maxlength="120" placeholder="Enter a name"
+                class="w-full px-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+
+            <div class="flex items-center gap-2 sm:justify-end">
+                <button id="rename-modal-cancel" type="button" class="flex-1 sm:flex-initial px-4 py-2.5 sm:py-2 text-sm sm:text-xs font-medium rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition">
+                    Cancel
+                </button>
+                <button id="rename-modal-save" type="submit" class="flex-1 sm:flex-initial px-4 py-2.5 sm:py-2 text-sm sm:text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition shadow-md shadow-blue-500/20">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        // --- Rename Modal (replaces browser prompt) ---
+        const renameModal = document.getElementById('rename-modal');
+        const renameModalForm = document.getElementById('rename-modal-form');
+        const renameModalInput = document.getElementById('rename-modal-input');
+        const renameModalTitle = document.getElementById('rename-modal-title');
+        const renameModalSubtitle = document.getElementById('rename-modal-subtitle');
+        const renameModalSave = document.getElementById('rename-modal-save');
+        let renameModalResolve = null;
+
+        function isRenameModalOpen() {
+            return !renameModal.classList.contains('hidden');
+        }
+
+        function closeRenameModal(result) {
+            if (!isRenameModalOpen()) return;
+            renameModal.classList.add('hidden');
+            document.body.style.overflow = '';
+            const resolve = renameModalResolve;
+            renameModalResolve = null;
+            if (resolve) resolve(result);
+        }
+
+        function openRenameModal({ title = 'Rename Audio', subtitle = '', value = '', confirmText = 'Save' } = {}) {
+            if (renameModalResolve) closeRenameModal(null);
+            renameModalTitle.textContent = title;
+            renameModalSubtitle.textContent = subtitle;
+            renameModalSubtitle.classList.toggle('hidden', !subtitle);
+            renameModalSave.textContent = confirmText;
+            renameModalInput.value = value;
+            renameModalSave.disabled = !value.trim();
+            renameModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            requestAnimationFrame(() => {
+                renameModalInput.focus();
+                renameModalInput.select();
+            });
+            return new Promise((resolve) => { renameModalResolve = resolve; });
+        }
+
+        renameModalInput.addEventListener('input', () => {
+            renameModalSave.disabled = !renameModalInput.value.trim();
+        });
+        renameModalForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = renameModalInput.value.trim();
+            if (val) closeRenameModal(val);
+        });
+        document.getElementById('rename-modal-cancel').addEventListener('click', () => closeRenameModal(null));
+        document.getElementById('rename-modal-close').addEventListener('click', () => closeRenameModal(null));
+        document.getElementById('rename-modal-backdrop').addEventListener('click', () => closeRenameModal(null));
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && isRenameModalOpen()) {
+                e.preventDefault();
+                closeRenameModal(null);
+            }
+        });
+
+        // --- 0. Setup Browser Favicon, Apple Touch Icon & PWA Manifest (Using New Icon) ---
+        const faviconHref = document.getElementById('favicon-link').getAttribute('href');
+        document.getElementById('apple-touch-icon-link').href = faviconHref;
+
+        (function setupPWA() {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 512;
+                    canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, 512, 512);
+                    const pngDataUrl = canvas.toDataURL('image/png');
+                    document.getElementById('apple-touch-icon-link').href = pngDataUrl;
+
+                    const manifest = {
+                        name: "WaveScrub Audio Analyzer",
+                        short_name: "WaveScrub",
+                        description: "Precision Audio Waveform Scrubber & AI Word-Sync",
+                        start_url: window.location.href.split('#')[0],
+                        display: "standalone",
+                        background_color: "#020617",
+                        theme_color: "#0b1323",
+                        icons: [
+                            { src: faviconHref, sizes: "any", type: "image/svg+xml", purpose: "any" },
+                            { src: pngDataUrl, sizes: "512x512", type: "image/png", purpose: "any maskable" }
+                        ]
+                    };
+                    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+                    const manifestLink = document.createElement('link');
+                    manifestLink.rel = 'manifest';
+                    manifestLink.href = URL.createObjectURL(manifestBlob);
+                    document.head.appendChild(manifestLink);
+                } catch (e) {}
+            };
+            img.src = faviconHref;
+
+            if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+                const swCode = `
+                    self.addEventListener('install', () => self.skipWaiting());
+                    self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+                    self.addEventListener('fetch', () => {});
+                `;
+                const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+            }
+
+            let deferredPrompt = null;
+            const pwaInstallBtn = document.getElementById('pwa-install-btn');
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                pwaInstallBtn.classList.remove('hidden');
+                pwaInstallBtn.classList.add('flex');
+            });
+
+            pwaInstallBtn.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                await deferredPrompt.userChoice;
+                deferredPrompt = null;
+                pwaInstallBtn.classList.add('hidden');
+            });
+        })();
+
+        // Confirm JS & WaveSurfer Status
+        const jsStatus = document.getElementById('js-status');
+        if (typeof WaveSurfer !== 'undefined') {
+            jsStatus.textContent = 'Ready';
+            jsStatus.className = 'text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-medium shrink-0';
+        } else {
+            jsStatus.textContent = 'WaveSurfer blocked';
+        }
+
+        // --- 1. Theme Toggle Logic ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const htmlEl = document.documentElement;
+        
+        themeToggle.addEventListener('click', () => {
+            htmlEl.classList.toggle('dark');
+            updateWaveColors();
+        });
+
+        // --- 2. IndexedDB Browser Database for Saving Audio + Transcriptions + Custom Names ---
+        const DB_NAME = 'WaveScrubLibraryDB';
+        const STORE_NAME = 'sessions';
+
+        function openLibraryDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function saveSessionToDB(audioBlob, fileName, transcriptData, language, customTitle = '') {
+            if (!audioBlob) return;
+            const db = await openLibraryDB();
+            const id = currentSessionId || `${fileName}_${audioBlob.size}`;
+            currentSessionId = id;
+
+            // Preserve existing custom title if already saved and no new customTitle passed
+            const existingSessions = await getAllSavedSessions();
+            const existing = existingSessions.find(s => s.id === id);
+            const finalTitle = (customTitle || (existing && existing.displayName) || currentDisplayName || fileName).trim();
+            currentDisplayName = finalTitle;
+            fileNameBadge.textContent = finalTitle;
+
+            const record = {
+                id,
+                fileName,
+                displayName: finalTitle,
+                fileSize: audioBlob.size,
+                audioBlob,
+                transcriptData: transcriptData || null,
+                language: language || '',
+                updatedAt: Date.now()
+            };
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(record);
+                tx.oncomplete = () => {
+                    refreshSavedLibraryUI();
+                    resolve(record);
+                };
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function renameSavedSessionInDB(id, newTitle) {
+            const trimmed = (newTitle || '').trim();
+            if (!trimmed) return;
+            const db = await openLibraryDB();
+            const sessions = await getAllSavedSessions();
+            const target = sessions.find(s => s.id === id);
+            if (!target) return;
+
+            target.displayName = trimmed;
+            target.updatedAt = Date.now();
+
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(target);
+                tx.oncomplete = () => {
+                    if (currentSessionId === id) {
+                        currentDisplayName = trimmed;
+                        fileNameBadge.textContent = trimmed;
+                    }
+                    refreshSavedLibraryUI();
+                    resolve(target);
+                };
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function getAllSavedSessions() {
+            try {
+                const db = await openLibraryDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const req = tx.objectStore(STORE_NAME).getAll();
+                    req.onsuccess = () => {
+                        const list = req.result || [];
+                        list.sort((a, b) => b.updatedAt - a.updatedAt);
+                        resolve(list);
+                    };
+                    req.onerror = () => reject(req.error);
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+
+        async function deleteSavedSession(id) {
+            const db = await openLibraryDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).delete(id);
+                tx.oncomplete = () => {
+                    refreshSavedLibraryUI();
+                    resolve();
+                };
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        const libraryToggleBtn = document.getElementById('library-toggle-btn');
+        const libraryDrawer = document.getElementById('library-drawer');
+        const closeLibraryBtn = document.getElementById('close-library-btn');
+        const headerLibraryList = document.getElementById('header-library-list');
+        const homeLibrarySection = document.getElementById('home-library-section');
+        const homeLibraryList = document.getElementById('home-library-list');
+        const savedCountBadge = document.getElementById('saved-count-badge');
+        const savedStatusPill = document.getElementById('saved-status-pill');
+
+        libraryToggleBtn.addEventListener('click', () => {
+            apiDrawer.classList.add('hidden');
+            libraryDrawer.classList.toggle('hidden');
+        });
+
+        closeLibraryBtn.addEventListener('click', () => {
+            libraryDrawer.classList.add('hidden');
+        });
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 KB';
+            const mb = bytes / (1024 * 1024);
+            return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str == null ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        function createSessionCardElement(session) {
+            const card = document.createElement('div');
+            card.className = 'group flex items-center justify-between gap-2 p-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 transition shadow-sm cursor-pointer';
+
+            const hasStt = Boolean(session.transcriptData);
+            const titleToShow = session.displayName || session.fileName;
+            const dateStr = new Date(session.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            const previewText = hasStt && session.transcriptData.text
+                ? session.transcriptData.text.slice(0, 55) + (session.transcriptData.text.length > 55 ? '...' : '')
+                : 'Audio saved (No transcript yet)';
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'min-w-0 flex-1';
+            infoDiv.innerHTML = `
+                <div class="flex items-center gap-1.5">
+                    <span class="font-semibold text-xs sm:text-sm truncate text-slate-800 dark:text-slate-100">${escapeHtml(titleToShow)}</span>
+                    ${hasStt ? '<span class="px-1.5 py-0.2 text-[10px] rounded bg-blue-500/10 text-blue-500 font-medium shrink-0">Synced STT</span>' : ''}
+                </div>
+                <p class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(previewText)}</p>
+                <div class="text-[10px] text-slate-400/80 font-mono mt-1">${formatBytes(session.fileSize)} • ${dateStr}</div>
+            `;
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'flex items-center gap-0.5 shrink-0';
+
+            // Rename Button on Saved Card
+            const renameBtn = document.createElement('button');
+            renameBtn.type = 'button';
+            renameBtn.className = 'p-1.5 text-slate-400 hover:text-blue-500 rounded-lg hover:bg-blue-500/10 transition';
+            renameBtn.title = 'Rename Saved Audio';
+            renameBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>`;
+
+            renameBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const newName = await openRenameModal({
+                    title: 'Rename Saved Audio',
+                    subtitle: session.fileName,
+                    value: titleToShow
+                });
+                if (newName && newName !== titleToShow) {
+                    renameSavedSessionInDB(session.id, newName);
+                }
+            });
+
+            // Delete Button on Saved Card
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition';
+            delBtn.title = 'Delete from Saved Library';
+            delBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
+
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSavedSession(session.id);
+            });
+
+            actionsDiv.appendChild(renameBtn);
+            actionsDiv.appendChild(delBtn);
+
+            card.addEventListener('click', () => {
+                loadSavedSession(session);
+                libraryDrawer.classList.add('hidden');
+            });
+
+            card.appendChild(infoDiv);
+            card.appendChild(actionsDiv);
+            return card;
+        }
+
+        async function refreshSavedLibraryUI() {
+            const sessions = await getAllSavedSessions();
+            savedCountBadge.textContent = sessions.length;
+
+            headerLibraryList.innerHTML = '';
+            homeLibraryList.innerHTML = '';
+
+            if (sessions.length === 0) {
+                headerLibraryList.innerHTML = `<p class="text-xs text-slate-400 col-span-full py-3 text-center">No saved audio or transcriptions yet. Transcribe an audio file or click "Save" to store it here.</p>`;
+                homeLibrarySection.classList.add('hidden');
+                return;
+            }
+
+            if (workspace.classList.contains('hidden')) {
+                homeLibrarySection.classList.remove('hidden');
+            }
+
+            sessions.forEach((s) => {
+                headerLibraryList.appendChild(createSessionCardElement(s));
+                homeLibraryList.appendChild(createSessionCardElement(s));
+            });
+        }
+
+        // --- 3. API Key Management ---
+        const STORAGE_KEY = 'wavescrub_stt_api_key';
+        const apiToggleBtn = document.getElementById('api-toggle-btn');
+        const apiDrawer = document.getElementById('api-drawer');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const clearKeyBtn = document.getElementById('clear-key-btn');
+        const closeDrawerBtn = document.getElementById('close-drawer-btn');
+        const apiBadgeText = document.getElementById('api-badge-text');
+        const apiDot = document.getElementById('api-dot');
+        const providerPill = document.getElementById('provider-pill');
+
+        function detectProvider(key) {
+            const trimmed = (key || '').trim();
+            if (!trimmed) return null;
+            if (trimmed.startsWith('gsk_')) {
+                return {
+                    name: 'Groq (Whisper Large v3)',
+                    shortName: 'Groq Ready',
+                    url: 'https://api.groq.com/openai/v1/audio/transcriptions',
+                    model: 'whisper-large-v3'
+                };
+            }
+            if (trimmed.startsWith('xai-')) {
+                return {
+                    name: 'Grok (xAI STT)',
+                    shortName: 'Grok Ready',
+                    url: 'https://api.x.ai/v1/audio/transcriptions',
+                    model: 'grok-stt'
+                };
+            }
+            if (trimmed.startsWith('sk-')) {
+                return {
+                    name: 'OpenAI (Whisper-1)',
+                    shortName: 'OpenAI Ready',
+                    url: 'https://api.openai.com/v1/audio/transcriptions',
+                    model: 'whisper-1'
+                };
+            }
+            return {
+                name: 'Custom API Key',
+                shortName: 'Key Saved',
+                url: 'https://api.groq.com/openai/v1/audio/transcriptions',
+                model: 'whisper-large-v3'
+            };
+        }
+
+        function updateApiStatusUI() {
+            const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+            apiKeyInput.value = savedKey;
+            const provider = detectProvider(savedKey);
+
+            if (provider) {
+                apiBadgeText.textContent = provider.shortName;
+                apiDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
+                providerPill.textContent = provider.name;
+                providerPill.className = 'text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500';
+            } else {
+                apiBadgeText.textContent = 'API Key';
+                apiDot.className = 'w-2 h-2 rounded-full bg-slate-400 shrink-0';
+                providerPill.textContent = 'No API Key Set';
+                providerPill.className = 'text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500';
+            }
+        }
+
+        apiToggleBtn.addEventListener('click', () => {
+            libraryDrawer.classList.add('hidden');
+            apiDrawer.classList.toggle('hidden');
+            if (!apiDrawer.classList.contains('hidden')) {
+                apiKeyInput.focus();
+            }
+        });
+
+        closeDrawerBtn.addEventListener('click', () => {
+            apiDrawer.classList.add('hidden');
+        });
+
+        apiKeyInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (val) {
+                localStorage.setItem(STORAGE_KEY, val);
+            } else {
+                localStorage.removeItem(STORAGE_KEY);
+            }
+            updateApiStatusUI();
+        });
+
+        clearKeyBtn.addEventListener('click', () => {
+            localStorage.removeItem(STORAGE_KEY);
+            apiKeyInput.value = '';
+            updateApiStatusUI();
+        });
+
+        updateApiStatusUI();
+        refreshSavedLibraryUI();
+
+        // --- 4. WaveSurfer & Audio Logic ---
+        let wavesurfer = null;
+        let isAudioReady = false;
+        let currentAudioFile = null;
+        let currentFileName = '';
+        let currentDisplayName = '';
+        let currentSessionId = '';
+        let currentTranscriptData = null;
+        let syncedWords = [];
+        let isEditingTranscript = false;
+
+        const floatTime = document.getElementById('float-time');
+
+        function injectPrettyScrollbar() {
+            const waveContainer = document.querySelector('#waveform > div');
+            if (waveContainer && waveContainer.shadowRoot) {
+                const style = document.createElement('style');
+                style.textContent = `
+                    .scroll {
+                        scrollbar-width: thin;
+                        scrollbar-color: rgba(59, 130, 246, 0.5) transparent;
+                        padding-bottom: 6px;
+                    }
+                    .scroll::-webkit-scrollbar { height: 6px; }
+                    .scroll::-webkit-scrollbar-track { background: rgba(148, 163, 184, 0.12); border-radius: 9999px; }
+                    .scroll::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.5); border-radius: 9999px; }
+                    .scroll::-webkit-scrollbar-thumb:hover { background: rgba(59, 130, 246, 0.9); }
+                `;
+                waveContainer.shadowRoot.appendChild(style);
+            }
+        }
+
+        function initWaveSurfer() {
+            if (wavesurfer) wavesurfer.destroy();
+            isAudioReady = false;
+
+            const isDark = htmlEl.classList.contains('dark');
+            const isMobile = window.innerWidth < 640;
+
+            wavesurfer = WaveSurfer.create({
+                container: '#waveform',
+                waveColor: isDark ? '#334155' : '#cbd5e1',
+                progressColor: '#3b82f6',
+                cursorColor: '#ef4444',
+                cursorWidth: 2,
+                barWidth: 2,
+                barGap: 1,
+                barRadius: 2,
+                height: isMobile ? 120 : 160,
+                normalize: true,
+                minPxPerSec: 10,
+                plugins: [
+                    WaveSurfer.Timeline.create({
+                        container: '#wave-timeline',
+                        height: 20,
+                        style: {
+                            fontSize: '11px',
+                            color: isDark ? '#64748b' : '#94a3b8'
+                        }
+                    })
+                ]
+            });
+
+            injectPrettyScrollbar();
+
+            wavesurfer.on('loading', () => {
+                document.getElementById('loading-overlay').classList.remove('hidden');
+            });
+
+            wavesurfer.on('ready', () => {
+                isAudioReady = true;
+                document.getElementById('loading-overlay').classList.add('hidden');
+                document.getElementById('total-time').textContent = formatTime(wavesurfer.getDuration());
+                const zeroTime = formatTime(0);
+                document.getElementById('current-time').textContent = zeroTime;
+                floatTime.textContent = zeroTime;
+            });
+
+            wavesurfer.on('timeupdate', (currentTime) => {
+                const formatted = formatTime(currentTime);
+                document.getElementById('current-time').textContent = formatted;
+                floatTime.textContent = formatted;
+                highlightWordAtTime(currentTime);
+            });
+
+            wavesurfer.on('play', () => togglePlayButton(true));
+            wavesurfer.on('pause', () => togglePlayButton(false));
+        }
+
+        function updateWaveColors() {
+            if (!wavesurfer) return;
+            const isDark = htmlEl.classList.contains('dark');
+            wavesurfer.setOptions({
+                waveColor: isDark ? '#334155' : '#cbd5e1',
+            });
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+        }
+
+        // --- 5. File Upload, Custom Naming & Saved Session Loader ---
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const workspace = document.getElementById('workspace');
+        const newFileBtn = document.getElementById('new-file-btn');
+        const fileNameBadge = document.getElementById('file-name');
+        const renameCurrentBtn = document.getElementById('rename-current-btn');
+        const saveSessionBtn = document.getElementById('save-session-btn');
+        const saveAsBtn = document.getElementById('save-as-btn');
+        const saveSessionText = document.getElementById('save-session-text');
+
+        newFileBtn.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/20');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/20');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/20');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                loadAudioFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                loadAudioFile(e.target.files[0]);
+            }
+        });
+
+        async function loadAudioFile(file) {
+            currentAudioFile = file;
+            currentFileName = file.name;
+            currentDisplayName = file.name;
+            currentSessionId = `${file.name}_${file.size}`;
+            currentTranscriptData = null;
+
+            dropzone.classList.add('hidden');
+            homeLibrarySection.classList.add('hidden');
+            workspace.classList.remove('hidden');
+            newFileBtn.classList.remove('hidden');
+            
+            fileNameBadge.textContent = currentDisplayName;
+            renameCurrentBtn.classList.remove('hidden');
+
+            document.getElementById('zoom-slider').value = 10;
+            document.getElementById('zoom-label').textContent = '1.0x';
+
+            resetTranscriptUI();
+            initWaveSurfer();
+            wavesurfer.loadBlob(file);
+
+            const sessions = await getAllSavedSessions();
+            const existing = sessions.find(s => s.id === currentSessionId);
+            if (existing) {
+                currentDisplayName = existing.displayName || existing.fileName;
+                fileNameBadge.textContent = currentDisplayName;
+                if (existing.transcriptData) {
+                    currentTranscriptData = existing.transcriptData;
+                    if (existing.language) langSelect.value = existing.language;
+                    renderSyncedTranscript(existing.transcriptData);
+                    savedStatusPill.classList.remove('hidden');
+                    showSttMessage('Loaded saved transcription from your browser library automatically!', false);
+                }
+            }
+        }
+
+        function loadSavedSession(session) {
+            const restoredFile = new File([session.audioBlob], session.fileName, {
+                type: session.audioBlob.type || 'audio/mpeg'
+            });
+            currentAudioFile = restoredFile;
+            currentFileName = session.fileName;
+            currentDisplayName = session.displayName || session.fileName;
+            currentSessionId = session.id;
+            currentTranscriptData = session.transcriptData || null;
+
+            dropzone.classList.add('hidden');
+            homeLibrarySection.classList.add('hidden');
+            workspace.classList.remove('hidden');
+            newFileBtn.classList.remove('hidden');
+
+            fileNameBadge.textContent = currentDisplayName;
+            renameCurrentBtn.classList.remove('hidden');
+
+            document.getElementById('zoom-slider').value = 10;
+            document.getElementById('zoom-label').textContent = '1.0x';
+
+            resetTranscriptUI();
+            savedStatusPill.classList.remove('hidden');
+            initWaveSurfer();
+            wavesurfer.loadBlob(session.audioBlob);
+
+            if (session.language) {
+                langSelect.value = session.language;
+            }
+            if (session.transcriptData) {
+                renderSyncedTranscript(session.transcriptData);
+            }
+        }
+
+        // Quick 1-click Save (uses current name without forcing a prompt)
+        saveSessionBtn.addEventListener('click', async () => {
+            if (!currentAudioFile) return;
+            await saveSessionToDB(currentAudioFile, currentFileName, currentTranscriptData, langSelect.value, currentDisplayName);
+            savedStatusPill.classList.remove('hidden');
+            saveSessionText.textContent = 'Saved!';
+            setTimeout(() => { saveSessionText.textContent = 'Save'; }, 1800);
+        });
+
+        // Optional Rename / Save with Custom Name (Pencil button next to Save or Header Title Badge)
+        async function promptCustomSessionName() {
+            if (!currentAudioFile) return;
+            const newName = await openRenameModal({
+                title: 'Name & Save Audio',
+                subtitle: currentFileName,
+                value: currentDisplayName || currentFileName,
+                confirmText: 'Save'
+            });
+            if (newName) {
+                currentDisplayName = newName;
+                fileNameBadge.textContent = currentDisplayName;
+                await saveSessionToDB(currentAudioFile, currentFileName, currentTranscriptData, langSelect.value, currentDisplayName);
+                savedStatusPill.classList.remove('hidden');
+                saveSessionText.textContent = 'Saved!';
+                setTimeout(() => { saveSessionText.textContent = 'Save'; }, 1800);
+            }
+        }
+
+        saveAsBtn.addEventListener('click', promptCustomSessionName);
+        renameCurrentBtn.addEventListener('click', promptCustomSessionName);
+
+        // --- 6. Speech-to-Text (STT), Inline Typo Editing & Paragraph Formatting ---
+        const transcribeBtn = document.getElementById('transcribe-btn');
+        const transcribeBtnText = document.getElementById('transcribe-btn-text');
+        const sttIcon = document.getElementById('stt-icon');
+        const sttSpinner = document.getElementById('stt-spinner');
+        const sttMessage = document.getElementById('stt-message');
+        const sttSubtitle = document.getElementById('stt-subtitle');
+        const transcriptContainer = document.getElementById('transcript-container');
+        const langSelect = document.getElementById('lang-select');
+        const activeWordBadge = document.getElementById('active-word-badge');
+        const editTextBtn = document.getElementById('edit-text-btn');
+        const editTextLabel = document.getElementById('edit-text-label');
+
+        function resetTranscriptUI() {
+            syncedWords = [];
+            isEditingTranscript = false;
+            transcriptContainer.classList.remove('editing-transcript');
+            editTextBtn.classList.add('hidden');
+            editTextBtn.classList.remove('flex');
+            editTextLabel.textContent = 'Edit Text';
+            activeWordBadge.classList.add('hidden');
+            savedStatusPill.classList.add('hidden');
+            sttMessage.classList.add('hidden');
+            transcriptContainer.setAttribute('dir', 'ltr');
+            transcriptContainer.innerHTML = `
+                <p id="transcript-placeholder" class="text-xs sm:text-sm text-slate-400 w-full text-center py-4">
+                    Tap <strong>"Transcribe Audio"</strong> above to generate natural, clickable paragraphs synced with the audio wave.
+                </p>
+            `;
+            updateFloatingControlsVisibility();
+        }
+
+        // Toggle Inline Typo Editing Mode (keeps exact word timestamps intact!)
+        editTextBtn.addEventListener('click', async () => {
+            if (!syncedWords.length) return;
+            isEditingTranscript = !isEditingTranscript;
+
+            if (isEditingTranscript) {
+                transcriptContainer.classList.add('editing-transcript');
+                editTextLabel.textContent = 'Done Editing';
+                editTextBtn.className = 'flex px-3.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-white text-xs sm:text-sm font-semibold rounded-xl transition items-center gap-1.5 shrink-0 shadow-sm';
+                sttSubtitle.textContent = 'Edit Mode Active: Click any word below to fix typos. Timestamps stay synced!';
+
+                syncedWords.forEach(w => {
+                    w.element.setAttribute('contenteditable', 'true');
+                    w.element.setAttribute('spellcheck', 'false');
+                });
+            } else {
+                transcriptContainer.classList.remove('editing-transcript');
+                editTextLabel.textContent = 'Edit Text';
+                editTextBtn.className = 'flex px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs sm:text-sm font-medium rounded-xl transition items-center gap-1.5 shrink-0';
+                sttSubtitle.textContent = 'Tap or click any word in the paragraphs below to scrub the waveform to its exact start.';
+
+                // Save edited words back into syncedWords & currentTranscriptData
+                const updatedWordsArray = [];
+                syncedWords.forEach(w => {
+                    w.element.removeAttribute('contenteditable');
+                    const cleaned = (w.element.textContent || '').trim();
+                    if (cleaned) {
+                        w.word = cleaned;
+                        w.element.textContent = cleaned;
+                    } else {
+                        w.element.textContent = w.word;
+                    }
+                    updatedWordsArray.push({
+                        word: w.word,
+                        start: w.start,
+                        end: w.end
+                    });
+                });
+
+                currentTranscriptData = {
+                    ...(currentTranscriptData || {}),
+                    text: updatedWordsArray.map(u => u.word).join(' '),
+                    words: updatedWordsArray,
+                    isEdited: true
+                };
+
+                if (currentAudioFile) {
+                    await saveSessionToDB(currentAudioFile, currentFileName, currentTranscriptData, langSelect.value, currentDisplayName);
+                    savedStatusPill.classList.remove('hidden');
+                    showSttMessage('Saved your text edits to the browser library!', false);
+                }
+            }
+        });
+
+        function showSttMessage(text, isError = true) {
+            sttMessage.textContent = text;
+            sttMessage.className = isError
+                ? 'text-xs px-4 py-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20'
+                : 'text-xs px-4 py-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
+            sttMessage.classList.remove('hidden');
+        }
+
+        function isRtlText(text) {
+            return /[\u0590-\u05FF\u0600-\u06FF]/.test(text);
+        }
+
+        function attachPunctuationToWords(rawWords, fullText) {
+            if (!fullText || !rawWords.length) return rawWords;
+
+            const punctuatedTokens = fullText.trim().split(/\s+/);
+            const stripPunct = (str) => str.replace(/[.,!?;:"'()[\]{}،؛؟]/g, '').toLowerCase();
+
+            let tokenIdx = 0;
+            return rawWords.map((w) => {
+                const rawWordText = (w.word || w.text || '').trim();
+                const cleanWord = stripPunct(rawWordText);
+                if (!cleanWord) return { ...w, displayWord: rawWordText };
+
+                for (let look = 0; look < 5 && (tokenIdx + look) < punctuatedTokens.length; look++) {
+                    const candidate = punctuatedTokens[tokenIdx + look];
+                    if (stripPunct(candidate) === cleanWord) {
+                        tokenIdx = tokenIdx + look + 1;
+                        return { ...w, displayWord: candidate };
+                    }
+                }
+                return { ...w, displayWord: rawWordText };
+            });
+        }
+
+        transcribeBtn.addEventListener('click', async () => {
+            if (!currentAudioFile) return;
+
+            const apiKey = (localStorage.getItem(STORAGE_KEY) || '').trim();
+            const provider = detectProvider(apiKey);
+
+            if (!provider) {
+                apiDrawer.classList.remove('hidden');
+                apiKeyInput.focus();
+                showSttMessage('Please paste your Groq (gsk_...), Grok (xai-...), or OpenAI (sk-...) API key in the top bar first.');
+                return;
+            }
+
+            sttMessage.classList.add('hidden');
+            transcribeBtn.disabled = true;
+            sttIcon.classList.add('hidden');
+            sttSpinner.classList.remove('hidden');
+            transcribeBtnText.textContent = 'Transcribing...';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', currentAudioFile);
+                formData.append('model', provider.model);
+                formData.append('response_format', 'verbose_json');
+                formData.append('timestamp_granularities[]', 'word');
+                formData.append('timestamp_granularities[]', 'segment');
+
+                const selectedLang = langSelect.value;
+                if (selectedLang) {
+                    formData.append('language', selectedLang);
+                }
+
+                const response = await fetch(provider.url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`API Error (${response.status}): ${errText}`);
+                }
+
+                const data = await response.json();
+                currentTranscriptData = data;
+                renderSyncedTranscript(data);
+
+                await saveSessionToDB(currentAudioFile, currentFileName, data, selectedLang, currentDisplayName);
+                savedStatusPill.classList.remove('hidden');
+
+            } catch (err) {
+                console.error(err);
+                showSttMessage(`Transcription failed: ${err.message}`);
+            } finally {
+                transcribeBtn.disabled = false;
+                sttIcon.classList.remove('hidden');
+                sttSpinner.classList.add('hidden');
+                transcribeBtnText.textContent = 'Transcribe Audio';
+            }
+        });
+
+        function renderSyncedTranscript(data) {
+            syncedWords = [];
+            isEditingTranscript = false;
+            transcriptContainer.classList.remove('editing-transcript');
+            transcriptContainer.innerHTML = '';
+
+            let rawWords = [];
+            if (Array.isArray(data.words) && data.words.length > 0) {
+                rawWords = data.words;
+            } else if (Array.isArray(data.segments)) {
+                data.segments.forEach(seg => {
+                    if (Array.isArray(seg.words)) {
+                        rawWords.push(...seg.words);
+                    } else if (seg.text) {
+                        rawWords.push({ word: seg.text, start: seg.start, end: seg.end });
+                    }
+                });
+            }
+
+            const fullPunctuatedText = data.text || (Array.isArray(data.segments) ? data.segments.map(s => s.text).join(' ') : '');
+
+            if (rawWords.length === 0 && fullPunctuatedText) {
+                rawWords = [{ word: fullPunctuatedText, start: 0, end: wavesurfer ? wavesurfer.getDuration() : 0 }];
+            }
+
+            if (rawWords.length === 0) {
+                transcriptContainer.innerHTML = `<p class="text-sm text-slate-400 w-full text-center py-4">No speech detected in audio.</p>`;
+                editTextBtn.classList.add('hidden');
+                updateFloatingControlsVisibility();
+                return;
+            }
+
+            // Show the "Edit Text" button once words are rendered
+            editTextBtn.classList.remove('hidden');
+            editTextBtn.classList.add('flex');
+            editTextLabel.textContent = 'Edit Text';
+            editTextBtn.className = 'flex px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs sm:text-sm font-medium rounded-xl transition items-center gap-1.5 shrink-0';
+
+            const enrichedWords = data.isEdited
+                ? rawWords.map(w => ({ ...w, displayWord: w.word }))
+                : attachPunctuationToWords(rawWords, fullPunctuatedText);
+
+            const sampleText = fullPunctuatedText || enrichedWords.map(w => w.displayWord).join(' ');
+            const isRtl = ['he', 'ar'].includes(langSelect.value) || isRtlText(sampleText);
+            transcriptContainer.setAttribute('dir', isRtl ? 'rtl' : 'ltr');
+
+            let currentParagraph = document.createElement('p');
+            currentParagraph.className = 'select-text leading-relaxed';
+            let sentencesInCurrentPara = 0;
+            let wordsInCurrentPara = 0;
+
+            enrichedWords.forEach((item, index) => {
+                const wordText = (item.displayWord || item.word || item.text || '').trim();
+                if (!wordText) return;
+
+                const startTime = Number(item.start) || 0;
+                const endTime = Number(item.end) || (startTime + 0.25);
+
+                const span = document.createElement('span');
+                span.className = 'sync-word';
+                span.textContent = wordText;
+                span.title = formatTime(startTime);
+
+                // Click Word -> Scrub Waveform ONLY when not in Edit Text mode
+                span.addEventListener('click', () => {
+                    if (isEditingTranscript) return;
+                    if (!wavesurfer || !isAudioReady) return;
+                    wavesurfer.setTime(startTime);
+                    highlightWordAtTime(startTime);
+                });
+
+                // Pressing Enter while editing a word finishes editing that word cleanly
+                span.addEventListener('keydown', (e) => {
+                    if (!isEditingTranscript) return;
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        span.blur();
+                    }
+                });
+
+                currentParagraph.appendChild(span);
+                wordsInCurrentPara++;
+
+                syncedWords.push({
+                    word: wordText,
+                    start: startTime,
+                    end: endTime,
+                    element: span
+                });
+
+                const endsWithSentencePunct = /[.!?؟]$/.test(wordText);
+                if (endsWithSentencePunct) sentencesInCurrentPara++;
+
+                const nextWord = enrichedWords[index + 1];
+                const pauseBeforeNext = nextWord ? ((Number(nextWord.start) || 0) - endTime) : 0;
+
+                const shouldBreakParagraph = nextWord && (
+                    (endsWithSentencePunct && (sentencesInCurrentPara >= 2 || pauseBeforeNext > 0.7 || wordsInCurrentPara >= 32)) ||
+                    (pauseBeforeNext > 1.3 && wordsInCurrentPara >= 10)
+                );
+
+                if (shouldBreakParagraph) {
+                    transcriptContainer.appendChild(currentParagraph);
+                    currentParagraph = document.createElement('p');
+                    currentParagraph.className = 'select-text leading-relaxed';
+                    sentencesInCurrentPara = 0;
+                    wordsInCurrentPara = 0;
+                } else if (index < enrichedWords.length - 1) {
+                    currentParagraph.appendChild(document.createTextNode(' '));
+                }
+            });
+
+            if (currentParagraph.childNodes.length > 0) {
+                transcriptContainer.appendChild(currentParagraph);
+            }
+
+            if (wavesurfer && isAudioReady) {
+                highlightWordAtTime(wavesurfer.getCurrentTime());
+            }
+
+            updateFloatingControlsVisibility();
+        }
+
+        function highlightWordAtTime(currentTime) {
+            if (!syncedWords.length) return;
+
+            let matchedWord = null;
+
+            for (let i = 0; i < syncedWords.length; i++) {
+                const w = syncedWords[i];
+                if (currentTime >= (w.start - 0.03) && currentTime <= (w.end + 0.05)) {
+                    matchedWord = w;
+                    break;
+                }
+            }
+
+            syncedWords.forEach(w => {
+                if (w === matchedWord) {
+                    w.element.classList.add('active-word');
+                } else {
+                    w.element.classList.remove('active-word');
+                }
+            });
+
+            if (matchedWord) {
+                activeWordBadge.textContent = matchedWord.word;
+                activeWordBadge.classList.remove('hidden');
+            } else {
+                activeWordBadge.classList.add('hidden');
+            }
+        }
+
+        // --- 7. Controls, Floating Mini-Player, Zoom & Scrubbing Logic ---
+        const playBtn = document.getElementById('play-btn');
+        const floatPlayBtn = document.getElementById('float-play-btn');
+        const floatingControls = document.getElementById('floating-controls');
+        const floatTopBtn = document.getElementById('float-top-btn');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const zoomLabel = document.getElementById('zoom-label');
+        const speedSelect = document.getElementById('speed-select');
+        const waveformCard = document.getElementById('waveform-card');
+
+        playBtn.addEventListener('click', () => {
+            if (wavesurfer) wavesurfer.playPause();
+        });
+
+        floatPlayBtn.addEventListener('click', () => {
+            if (wavesurfer) wavesurfer.playPause();
+        });
+
+        floatTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        function togglePlayButton(isPlaying) {
+            document.getElementById('play-icon').classList.toggle('hidden', isPlaying);
+            document.getElementById('pause-icon').classList.toggle('hidden', !isPlaying);
+            document.getElementById('play-text').textContent = isPlaying ? 'Pause' : 'Play';
+
+            document.getElementById('float-play-icon').classList.toggle('hidden', isPlaying);
+            document.getElementById('float-pause-icon').classList.toggle('hidden', !isPlaying);
+            document.getElementById('float-play-text').textContent = isPlaying ? 'Pause' : 'Play';
+        }
+
+        function updateFloatingControlsVisibility() {
+            const hasTranscript = syncedWords.length > 0;
+            if (!hasTranscript || workspace.classList.contains('hidden')) {
+                floatingControls.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
+                return;
+            }
+
+            const playBtnRect = playBtn.getBoundingClientRect();
+            const isScrolledPastPlayBtn = playBtnRect.bottom < -80;
+
+            if (isScrolledPastPlayBtn) {
+                floatingControls.classList.remove('translate-y-24', 'opacity-0', 'pointer-events-none');
+            } else {
+                floatingControls.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
+            }
+        }
+
+        window.addEventListener('scroll', updateFloatingControlsVisibility, { passive: true });
+        window.addEventListener('resize', updateFloatingControlsVisibility, { passive: true });
+
+        function nudgeTime(deltaSeconds) {
+            if (!wavesurfer || !isAudioReady) return;
+            const current = wavesurfer.getCurrentTime();
+            const duration = wavesurfer.getDuration();
+            const target = Math.max(0, Math.min(duration, current + deltaSeconds));
+            wavesurfer.setTime(target);
+        }
+
+        document.getElementById('nudge-back').addEventListener('click', () => nudgeTime(-0.1));
+        document.getElementById('nudge-forward').addEventListener('click', () => nudgeTime(0.1));
+        document.getElementById('nudge-back-fine').addEventListener('click', () => nudgeTime(-0.01));
+        document.getElementById('nudge-forward-fine').addEventListener('click', () => nudgeTime(0.01));
+
+        document.getElementById('float-nudge-back').addEventListener('click', () => nudgeTime(-0.1));
+        document.getElementById('float-nudge-forward').addEventListener('click', () => nudgeTime(0.1));
+
+        function applyZoom(newZoomValue) {
+            if (!wavesurfer || !isAudioReady) return;
+            const minZoom = Number(zoomSlider.min);
+            const maxZoom = Number(zoomSlider.max);
+            const clampedZoom = Math.max(minZoom, Math.min(maxZoom, newZoomValue));
+            
+            zoomSlider.value = clampedZoom;
+            wavesurfer.zoom(clampedZoom);
+            
+            const factor = (clampedZoom / 10).toFixed(1);
+            zoomLabel.textContent = `${factor}x`;
+        }
+
+        zoomSlider.addEventListener('input', (e) => {
+            applyZoom(Number(e.target.value));
+        });
+
+        waveformCard.addEventListener('wheel', (e) => {
+            if (!wavesurfer || !isAudioReady) return;
+
+            if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+                return;
+            }
+
+            e.preventDefault();
+
+            const currentZoom = Number(zoomSlider.value);
+            const step = Math.max(15, Math.round(currentZoom * 0.15));
+            const direction = e.deltaY < 0 ? 1 : -1;
+
+            applyZoom(currentZoom + (direction * step));
+        }, { passive: false });
+
+        speedSelect.addEventListener('change', (e) => {
+            if (!wavesurfer) return;
+            wavesurfer.setPlaybackRate(Number(e.target.value), true);
+        });
+
+        // --- 8. Keyboard Shortcuts ---
+        window.addEventListener('keydown', (e) => {
+            if (!wavesurfer || workspace.classList.contains('hidden')) return;
+            if (isRenameModalOpen()) return;
+            if (document.activeElement && document.activeElement.isContentEditable) return;
+            
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                if (e.code === 'Space' && document.activeElement !== apiKeyInput) {
+                    document.activeElement.blur();
+                } else {
+                    return;
+                }
+            }
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                wavesurfer.playPause();
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                nudgeTime(e.shiftKey ? -0.01 : -0.1);
+            } else if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                nudgeTime(e.shiftKey ? 0.01 : 0.1);
+            }
+        });
+    </script>
+</body>
+</html>
